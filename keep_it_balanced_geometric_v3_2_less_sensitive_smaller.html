@@ -1,0 +1,927 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#12001f">
+<title>Keep It Balanced — Geometric POC</title>
+<style>
+:root{
+  --ink:#fff;
+  --muted:#d9d0ef;
+  --violet:#7d2cff;
+  --violet2:#b04cff;
+  --blue:#1646ff;
+  --cyan:#25d6ff;
+  --pink:#ff3abf;
+  --yellow:#ffd63d;
+  --green:#37d86b;
+  --red:#ff4d66;
+  --orange:#e67122;
+  --orange2:#ff9a3c;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#05020d;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{overflow:hidden;overscroll-behavior:none}
+button{font:inherit}
+#game{
+  position:relative;
+  width:100%;
+  height:100dvh;
+  min-height:0;
+  overflow:hidden;
+  touch-action:manipulation;
+  isolation:isolate;
+  background:
+    radial-gradient(circle at 53% 45%, rgba(126,44,255,.38), transparent 22%),
+    radial-gradient(circle at 48% 49%, rgba(255,53,194,.20), transparent 34%),
+    linear-gradient(135deg,#10001c 0%,#32105f 43%,#08166e 100%);
+}
+#cameraViewport{
+  position:fixed;
+  inset:0;
+  z-index:0;
+  overflow:hidden;
+  background:#05020d;
+}
+#cameraFeed{
+  position:absolute;
+  top:50%;
+  left:50%;
+  display:block;
+  max-width:none;
+  max-height:none;
+  transform:translate(-50%,-50%);
+}
+.camera-scrim{
+  position:absolute;
+  inset:0;
+  z-index:2;
+  display:none;
+  pointer-events:none;
+  background:
+    radial-gradient(circle at 53% 45%, rgba(126,44,255,.24), transparent 28%),
+    linear-gradient(135deg, rgba(16,0,28,.36), rgba(8,22,110,.24));
+}
+#game.camera-active .camera-scrim{display:block}
+#game::before{
+  content:"";
+  position:absolute;inset:-15%;
+  z-index:-4;
+  background:
+    linear-gradient(132deg, transparent 25%, rgba(255,255,255,.04) 25.2%, transparent 25.5%),
+    linear-gradient(48deg, transparent 61%, rgba(255,0,183,.08) 61.2%, transparent 61.5%),
+    radial-gradient(circle at 50% 50%, transparent 0 34%, rgba(116,70,255,.08) 34.3% 35.2%, transparent 35.5% 44%, rgba(255,58,196,.08) 44.3% 45.2%, transparent 45.5%);
+  transform:rotate(-4deg);
+}
+.particles{position:absolute;inset:0;z-index:3;overflow:hidden;pointer-events:none}
+.particles i{
+  position:absolute;width:9px;height:9px;border-radius:2px;opacity:.55;
+  background:var(--violet2);filter:blur(.2px);animation:float 5s linear infinite;
+}
+.particles i:nth-child(2n){background:var(--pink);width:6px;height:12px}
+.particles i:nth-child(3n){background:var(--cyan);border-radius:50%}
+@keyframes float{
+  from{transform:translateY(30px) rotate(0)}
+  to{transform:translateY(-120vh) rotate(360deg)}
+}
+
+.hud{
+  position:absolute;z-index:30;left:12px;right:12px;top:max(12px,env(safe-area-inset-top));
+  display:flex;justify-content:space-between;gap:10px;pointer-events:none;
+}
+.panel{
+  background:rgba(4,5,22,.66);
+  border:1px solid rgba(255,255,255,.2);
+  border-radius:14px;
+  padding:9px 12px;
+  min-width:116px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 10px 30px rgba(0,0,0,.18);
+  backdrop-filter:blur(10px);
+}
+.panel.right{text-align:right;min-width:138px}
+.kicker{display:block;color:#bfb1de;font-size:9px;font-weight:900;letter-spacing:.15em}
+.big{display:block;margin-top:2px;font-size:20px;font-weight:950;line-height:1;font-variant-numeric:tabular-nums}
+
+.stage{
+  position:absolute;inset:0;z-index:10;
+  display:grid;place-items:center;
+  padding:80px 12px 108px;
+}
+.world{
+  position:relative;
+  width:min(94vw,540px);
+  height:min(72vh,650px);
+  min-height:420px;
+}
+.portal{
+  position:absolute;left:50%;top:48%;
+  width:min(84vw,435px);aspect-ratio:1;
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  background:
+    radial-gradient(circle, rgba(0,0,0,0) 0 47%, rgba(79,35,189,.23) 48% 52%, rgba(0,0,0,0) 53%),
+    conic-gradient(from 12deg, rgba(38,214,255,.18), rgba(255,58,191,.35), rgba(125,44,255,.2), rgba(38,214,255,.18));
+  box-shadow:
+    0 0 0 2px rgba(164,109,255,.45),
+    0 0 0 14px rgba(109,60,240,.05),
+    0 0 60px rgba(161,72,255,.55),
+    inset 0 0 50px rgba(71,45,204,.22);
+  animation:portalPulse 3s ease-in-out infinite alternate;
+}
+.portal::before,.portal::after{
+  content:"";position:absolute;border-radius:50%;inset:8%;
+  border:2px dashed rgba(255,255,255,.18);
+  animation:spin 14s linear infinite;
+}
+.portal::after{inset:19%;animation-duration:9s;animation-direction:reverse;border-color:rgba(43,209,255,.17)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes portalPulse{to{filter:brightness(1.15)}}
+
+.balance-line{
+  position:absolute;left:50%;top:7%;bottom:4%;width:1px;
+  border-left:2px dashed rgba(255,255,255,.45);
+  transform:translateX(-50%);
+}
+.difficulty-scale{
+  position:absolute;left:50%;top:6%;transform:translateX(-50%);
+  width:min(88%,430px);display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;
+  font-size:10px;font-weight:950;letter-spacing:.08em;
+}
+.difficulty-scale .easy{color:#72ed76}
+.difficulty-scale .chaos{color:#ff79c4}
+.scale{
+  position:relative;height:8px;border-radius:20px;
+  background:linear-gradient(90deg,#35d46b 0%,#8ee95b 30%,#ffd443 52%,#ff774e 74%,#ff3f76 100%);
+  box-shadow:0 0 12px rgba(255,255,255,.13);
+}
+.scale .needle{
+  position:absolute;left:50%;top:-5px;width:3px;height:18px;border-radius:3px;background:#fff;
+  box-shadow:0 0 8px #fff;transform:translateX(-50%);
+}
+
+.rig{
+  --rot:0deg;
+  position:absolute;
+  left:50%;bottom:1%;
+  width:270px;height:350px;
+  transform-origin:50% 93%;
+  transform:translateX(-50%) scale(.86) rotate(var(--rot));
+  will-change:transform;
+  filter:drop-shadow(0 28px 26px rgba(0,0,0,.35));
+}
+.rig.falling{transition:transform .65s cubic-bezier(.22,.7,.28,1.04)}
+
+.character{
+  position:absolute;left:32px;top:8px;width:206px;height:104px;
+  transform:rotate(-4deg);
+}
+.head{
+  position:absolute;left:20px;top:0;width:165px;height:86px;
+  border-radius:34px 40px 28px 36px;
+  background:linear-gradient(145deg,#1465e5,#0f8cce);
+  border:5px solid #0a254e;
+  box-shadow:inset -10px -12px 0 rgba(0,0,0,.13), inset 8px 8px 0 rgba(255,255,255,.08);
+}
+.head::before,.head::after{
+  content:"";position:absolute;top:21px;width:49px;height:49px;border-radius:50%;
+  background:#f6a51e;border:6px solid #17254c;box-shadow:inset 0 0 0 7px #ffca39;
+}
+.head::before{left:15px}.head::after{right:14px}
+.eye{position:absolute;top:43px;width:10px;height:10px;border-radius:50%;background:#15203f;z-index:4}
+.eye.e1{left:56px}.eye.e2{right:56px}
+.mouth{position:absolute;left:60px;bottom:12px;width:52px;height:9px;border-radius:0 0 20px 20px;background:#102143}
+.ear{position:absolute;top:33px;width:24px;height:24px;border-radius:7px;background:#1465e5;border:5px solid #0a254e}
+.ear.l{left:2px;transform:rotate(-18deg)}.ear.r{right:0;transform:rotate(18deg)}
+.antenna{
+  position:absolute;left:103px;top:-26px;width:7px;height:33px;border-radius:5px;background:#26324f;transform:rotate(8deg);
+}
+.antenna::before{
+  content:"";position:absolute;left:-7px;top:-10px;width:20px;height:20px;border-radius:50%;background:#202940;border:4px solid #9b8cff;
+}
+.arm{
+  position:absolute;width:56px;height:18px;border-radius:20px;background:#1375d8;border:5px solid #0a254e;top:78px;z-index:-1;
+}
+.arm.a1{left:0;transform:rotate(28deg)} .arm.a2{right:-1px;transform:rotate(-28deg)}
+
+.plant{position:absolute;inset:0}
+.stem{
+  position:absolute;width:9px;height:121px;border-radius:8px;background:linear-gradient(#38c96a,#11793b);
+  transform-origin:bottom;z-index:4;border:2px solid rgba(7,79,44,.35)
+}
+.s1{left:83px;top:108px;transform:rotate(-23deg)}
+.s2{left:132px;top:97px;transform:rotate(-2deg)}
+.s3{left:181px;top:111px;transform:rotate(23deg)}
+.leaf{
+  position:absolute;width:48px;height:22px;background:linear-gradient(140deg,#42dd67,#1a9a48);
+  border-radius:100% 0 100% 0;border:2px solid rgba(7,79,44,.28);z-index:4
+}
+.l1{left:63px;top:160px;transform:rotate(20deg)}
+.l2{left:112px;top:173px;transform:rotate(-24deg)}
+.l3{left:150px;top:151px;transform:rotate(-28deg)}
+.l4{left:177px;top:176px;transform:rotate(24deg)}
+.flower{
+  position:absolute;width:54px;height:54px;z-index:7;
+  transform-origin:50% 50%;
+}
+.f1{left:45px;top:85px;transform:rotate(-12deg) scale(.93)}
+.f2{left:105px;top:60px;transform:scale(1.08)}
+.f3{left:166px;top:89px;transform:rotate(12deg) scale(.94)}
+.petal{
+  position:absolute;left:17px;top:0;width:20px;height:29px;border-radius:80% 80% 60% 60%;
+  background:linear-gradient(#ff5fc6,#d72c93);transform-origin:50% 24px;
+  border:2px solid rgba(118,18,85,.18)
+}
+.petal:nth-child(2){transform:rotate(60deg)}.petal:nth-child(3){transform:rotate(120deg)}
+.petal:nth-child(4){transform:rotate(180deg)}.petal:nth-child(5){transform:rotate(240deg)}.petal:nth-child(6){transform:rotate(300deg)}
+.core{
+  position:absolute;left:18px;top:18px;width:18px;height:18px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#fff4a8,#ffb72f 45%,#d86916 100%);z-index:3;border:2px solid #a95a0c
+}
+
+.pot-rim{
+  position:absolute;left:48px;top:204px;width:174px;height:48px;border-radius:18px;
+  background:linear-gradient(#ff9b43,#d76321 58%,#a64716);
+  border:5px solid #71300f;
+  box-shadow:inset 0 7px 0 rgba(255,255,255,.15),inset 0 -7px 0 rgba(83,20,7,.18);
+  z-index:9;
+}
+.pot{
+  position:absolute;left:64px;top:235px;width:142px;height:88px;z-index:8;
+  background:
+    linear-gradient(90deg,rgba(83,21,7,.2),transparent 25% 65%,rgba(83,21,7,.18)),
+    repeating-linear-gradient(0deg,transparent 0 17px,rgba(77,24,8,.18) 18px 22px),
+    linear-gradient(#e87927,#bb4d16);
+  clip-path:polygon(0 0,100% 0,84% 100%,16% 100%);
+  border-radius:0 0 26px 26px;
+}
+.pot::after{
+  content:"";position:absolute;left:26px;right:26px;bottom:12px;height:8px;border-radius:8px;background:rgba(86,26,10,.26)
+}
+.platform{
+  position:absolute;left:79px;bottom:2px;width:112px;height:34px;border-radius:7px;
+  background:linear-gradient(#39556d,#0a1c2b);border:4px solid #0e0f23;
+  box-shadow:inset 0 5px 0 rgba(255,255,255,.08)
+}
+.platform::before{
+  content:"";position:absolute;left:50%;top:0;bottom:0;border-left:2px dashed rgba(255,255,255,.35)
+}
+.platform::after{
+  content:"";position:absolute;left:23px;right:23px;top:-9px;height:10px;border-radius:5px 5px 0 0;background:#183447
+}
+.shadow{
+  position:absolute;left:50%;bottom:0;width:76%;height:28px;transform:translateX(-50%);
+  background:radial-gradient(ellipse,rgba(28,39,255,.55),rgba(0,0,0,0) 68%);
+  filter:blur(7px)
+}
+
+.controls{
+  position:absolute;z-index:35;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translateX(-50%);
+  width:min(94vw,560px);text-align:center;
+}
+.instruction{
+  min-height:18px;margin:0 0 8px;color:#e9e1f7;font-size:12px;text-shadow:0 2px 8px rgba(0,0,0,.5)
+}
+.actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.btn{
+  min-height:46px;padding:0 18px;border:0;border-radius:14px;color:white;font-weight:950;
+  background:linear-gradient(135deg,#6a48ff,#c74fff);
+  box-shadow:0 8px 25px rgba(116,54,255,.32);cursor:pointer
+}
+.btn.alt{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);box-shadow:none}
+.btn:disabled{opacity:.45}
+.keyboard{display:none;gap:12px;justify-content:center;margin-top:8px}
+.keyboard .btn{width:62px;padding:0;font-size:22px;background:rgba(255,255,255,.10);box-shadow:none;border:1px solid rgba(255,255,255,.18)}
+
+.overlay{
+  position:absolute;inset:0;z-index:60;display:grid;place-items:center;padding:18px;
+  background:rgba(5,2,17,.62);backdrop-filter:blur(8px);
+}
+.card{
+  width:min(92vw,430px);padding:25px 22px 22px;border-radius:24px;text-align:center;
+  background:linear-gradient(160deg,rgba(34,17,70,.96),rgba(8,7,30,.97));
+  border:1px solid rgba(255,255,255,.18);
+  box-shadow:0 24px 80px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.08)
+}
+.eyebrow{font-size:10px;color:#bba9e7;font-weight:950;letter-spacing:.15em}
+.card h1{margin:8px 0 12px;font-size:clamp(31px,10vw,50px);line-height:.92}
+.card h1 span{display:block;color:var(--yellow)}
+.card p{margin:8px 0;color:#d9cee8;font-size:14px;line-height:1.48}
+.rules{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:17px 0}
+.rules div{padding:9px 4px;border-radius:12px;background:rgba(255,255,255,.07);font-size:11px;color:#d5cbe9}
+.rules strong{display:block;color:#fff;font-size:17px;margin-bottom:2px}
+.score{font-size:48px;font-weight:950;font-variant-numeric:tabular-nums;margin:8px 0}
+.hidden{display:none!important}
+.game-shake{animation:screenShake .35s linear 2}
+@keyframes screenShake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+
+
+.debris-layer{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  overflow:visible;
+  z-index:25;
+}
+.flower,.leaf,.stem{
+  will-change:translate,rotate,transform;
+}
+.physics-warning{
+  position:absolute;
+  left:50%;
+  top:14%;
+  transform:translateX(-50%);
+  z-index:26;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.08em;
+  color:#fff;
+  opacity:0;
+  transition:opacity .18s ease;
+  text-shadow:0 2px 10px rgba(0,0,0,.7);
+  pointer-events:none;
+}
+.physics-warning.show{opacity:1}
+
+@media (min-width:700px){.keyboard{display:flex}}
+@media (max-height:700px){
+  .world{height:500px;transform:scale(.88)}
+  .stage{padding-top:62px;padding-bottom:82px}
+}
+@media (prefers-reduced-motion:reduce){
+  .portal,.portal::before,.portal::after,.particles i{animation:none}
+}
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="cameraViewport" aria-hidden="true">
+    <video id="cameraFeed" autoplay muted playsinline></video>
+  </div>
+  <div class="camera-scrim" aria-hidden="true"></div>
+  <div class="particles" aria-hidden="true">
+    <i style="left:8%;top:85%;animation-delay:-1.1s"></i>
+    <i style="left:17%;top:62%;animation-delay:-3.4s"></i>
+    <i style="left:28%;top:92%;animation-delay:-.7s"></i>
+    <i style="left:42%;top:78%;animation-delay:-2.2s"></i>
+    <i style="left:59%;top:88%;animation-delay:-4s"></i>
+    <i style="left:72%;top:69%;animation-delay:-1.8s"></i>
+    <i style="left:82%;top:92%;animation-delay:-2.7s"></i>
+    <i style="left:92%;top:73%;animation-delay:-.3s"></i>
+  </div>
+
+  <div class="hud">
+    <div class="panel">
+      <span class="kicker">TIME</span>
+      <span class="big" id="time">00:00.00</span>
+    </div>
+    <div class="panel right">
+      <span class="kicker">DIFFICULTY</span>
+      <span class="big" id="difficulty">EASY</span>
+    </div>
+  </div>
+
+  <main class="stage">
+    <div class="world">
+      <div class="portal"></div>
+      <div class="balance-line"></div>
+      <div class="physics-warning" id="physicsWarning">GLI ELEMENTI SI STANNO STACCANDO!</div>
+      <div class="difficulty-scale">
+        <span class="easy">EASY</span>
+        <div class="scale"><i class="needle" id="needle"></i></div>
+        <span class="chaos">CHAOS</span>
+      </div>
+
+      <div class="rig" id="rig">
+        <div class="character" aria-hidden="true">
+          <div class="antenna"></div>
+          <div class="ear l"></div><div class="ear r"></div>
+          <div class="arm a1"></div><div class="arm a2"></div>
+          <div class="head"></div>
+          <div class="eye e1"></div><div class="eye e2"></div>
+          <div class="mouth"></div>
+        </div>
+
+        <div class="plant" aria-label="Vaso di fiori stilizzato">
+          <div class="stem s1"></div><div class="stem s2"></div><div class="stem s3"></div>
+          <div class="leaf l1"></div><div class="leaf l2"></div><div class="leaf l3"></div><div class="leaf l4"></div>
+
+          <div class="flower f1">
+            <i class="petal"></i><i class="petal"></i><i class="petal"></i><i class="petal"></i><i class="petal"></i><i class="petal"></i><b class="core"></b>
+          </div>
+          <div class="flower f2">
+            <i class="petal"></i><i class="petal"></i><i class="petal"></i><i class="petal"></i><i class="petal"></i><i class="petal"></i><b class="core"></b>
+          </div>
+          <div class="flower f3">
+            <i class="petal"></i><i class="petal"></i><i class="petal"></i><i class="petal"></i><i class="petal"></i><i class="petal"></i><b class="core"></b>
+          </div>
+
+          <div class="pot-rim"></div>
+          <div class="pot"></div>
+          <div class="platform"></div>
+        </div>
+      </div>
+
+      <div class="debris-layer" id="debrisLayer" aria-hidden="true"></div>
+      <div class="shadow"></div>
+    </div>
+  </main>
+
+  <div class="controls">
+    <p class="instruction" id="instruction">Inclina il telefono nella direzione opposta alla caduta.</p>
+    <div class="actions">
+      <button class="btn" id="startBtn" type="button">START GAME</button>
+      <button class="btn alt" id="calibrateBtn" type="button">RICALIBRA</button>
+    </div>
+    <div class="keyboard">
+      <button class="btn" id="leftBtn" type="button" aria-label="Compensa a sinistra">←</button>
+      <button class="btn" id="rightBtn" type="button" aria-label="Compensa a destra">→</button>
+    </div>
+  </div>
+
+  <section class="overlay" id="intro">
+    <div class="card">
+      <div class="eyebrow">MOBILE BALANCE CHALLENGE</div>
+      <h1>KEEP IT <span>BALANCED</span></h1>
+      <p>Il vaso è volutamente instabile. Inclina il telefono a destra e sinistra per tenerlo vicino alla linea centrale. Più resisti, più la fisica diventa nervosa.</p>
+      <div class="rules">
+        <div><strong>↔</strong>inclina</div>
+        <div><strong>⏱</strong>resisti</div>
+        <div><strong>⚡</strong>difficoltà ↑</div>
+      </div>
+      <button class="btn" id="introStart" type="button">GIOCA ORA</button>
+    </div>
+  </section>
+
+  <section class="overlay hidden" id="gameover">
+    <div class="card">
+      <div class="eyebrow">GAME OVER</div>
+      <h1>VASO <span>CADUTO!</span></h1>
+      <p>Hai resistito per</p>
+      <div class="score" id="finalScore">00:00.00</div>
+      <p id="bestText">Best sessione: 00:00.00</p>
+      <button class="btn" id="restartBtn" type="button">RIPROVA</button>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const game = document.getElementById('game');
+  const world = document.querySelector('.world');
+  const rig = document.getElementById('rig');
+  const debrisLayer = document.getElementById('debrisLayer');
+  const physicsWarning = document.getElementById('physicsWarning');
+  const timeEl = document.getElementById('time');
+  const diffEl = document.getElementById('difficulty');
+  const needle = document.getElementById('needle');
+  const instruction = document.getElementById('instruction');
+  const intro = document.getElementById('intro');
+  const gameover = document.getElementById('gameover');
+  const finalScore = document.getElementById('finalScore');
+  const bestText = document.getElementById('bestText');
+  const startBtn = document.getElementById('startBtn');
+  const introStart = document.getElementById('introStart');
+  const restartBtn = document.getElementById('restartBtn');
+  const calibrateBtn = document.getElementById('calibrateBtn');
+  const leftBtn = document.getElementById('leftBtn');
+  const rightBtn = document.getElementById('rightBtn');
+  const cameraFeed = document.getElementById('cameraFeed');
+  const cameraViewport = document.getElementById('cameraViewport');
+
+  let running = false;
+  let raf = 0;
+  let startTime = 0;
+  let lastTime = 0;
+
+  let angle = 0;
+  let omega = 0;
+
+  let gamma = 0;
+  let neutralGamma = 0;
+  let sensorActive = false;
+  let sensorBound = false;
+
+  let manual = 0;
+  let best = 0;
+  let cameraStarted = false;
+
+  const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
+
+  function format(ms){
+    ms = Math.max(0,ms||0);
+    const min = Math.floor(ms/60000);
+    const sec = Math.floor(ms/1000)%60;
+    const cs = Math.floor(ms/10)%100;
+    return `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+  }
+
+  function diffFor(ms){
+    const s = ms/1000;
+    const k = 1 + Math.min(4.8, s/16);
+    const label = s < 14 ? 'EASY' : s < 32 ? 'MEDIUM' : s < 55 ? 'HARD' : 'CHAOS';
+    return {k,label};
+  }
+
+  function setRig(a){
+    rig.style.setProperty('--rot', `${a.toFixed(2)}deg`);
+    needle.style.left = `${50 + clamp(a/42,-1,1)*48}%`;
+  }
+
+  function onOrientation(e){
+    if (typeof e.gamma !== 'number') return;
+    gamma = e.gamma;
+    sensorActive = true;
+  }
+
+  async function ensureSensor(){
+    if (sensorBound) return true;
+    try{
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function'){
+        const result = await DeviceOrientationEvent.requestPermission();
+        if (result !== 'granted') return false;
+      }
+      if (typeof DeviceOrientationEvent !== 'undefined'){
+        window.addEventListener('deviceorientation', onOrientation, {passive:true});
+        sensorBound = true;
+        return true;
+      }
+    }catch(e){}
+    return false;
+  }
+
+  async function ensureCamera(){
+    if (cameraStarted || !window.matchMedia('(max-width: 699px)').matches) return;
+    if (!navigator.mediaDevices?.getUserMedia) return;
+
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio:false,
+        video:{facingMode:{ideal:'user'}}
+      });
+      cameraFeed.srcObject = stream;
+      await cameraFeed.play();
+      fitCameraToViewport();
+      cameraStarted = true;
+      game.classList.add('camera-active');
+    }catch(e){}
+  }
+
+  function fitCameraToViewport(){
+    const sourceWidth = cameraFeed.videoWidth;
+    const sourceHeight = cameraFeed.videoHeight;
+    if (!sourceWidth || !sourceHeight) return;
+
+    const viewportWidth = cameraViewport.clientWidth;
+    const viewportHeight = cameraViewport.clientHeight;
+    const scale = Math.max(viewportWidth/sourceWidth, viewportHeight/sourceHeight);
+
+    // Size the actual frame beyond the viewport, then crop its excess edges.
+    // This does not stretch the camera image.
+    cameraFeed.style.width = `${Math.ceil(sourceWidth*scale)}px`;
+    cameraFeed.style.height = `${Math.ceil(sourceHeight*scale)}px`;
+  }
+
+  function recalibrate(){
+    neutralGamma = gamma;
+    angle = 0;
+    omega = 0;
+    setRig(0);
+    instruction.textContent = sensorActive
+      ? 'Ricalibrato: tieni questa posizione come centro.'
+      : 'Sensore non rilevato: su desktop usa ← e →.';
+  }
+
+  function currentInput(){
+    if (sensorActive){
+      const delta = gamma - neutralGamma;
+      return clamp(delta/32,-1,1);
+    }
+    return manual;
+  }
+
+  // --- SECONDARY PHYSICS: flowers, leaves and stems -------------------------
+  // Each element has its own spring/inertia while attached.
+  // If the vase leans too far, selected elements detach and become independent
+  // world-space bodies affected by gravity.
+  const pieceElements = Array.from(rig.querySelectorAll('.flower,.leaf,.stem'));
+  const plantHome = rig.querySelector('.plant');
+
+  const pieces = pieceElements.map((el, index) => {
+    const type = el.classList.contains('flower') ? 'flower'
+      : el.classList.contains('leaf') ? 'leaf' : 'stem';
+
+    return {
+      el,
+      type,
+      index,
+      homeParent: el.parentNode,
+      detached: false,
+      wobble: 0,
+      wobbleV: 0,
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      rot: 0,
+      rotV: 0,
+      detachBias: type === 'flower' ? 0 : type === 'leaf' ? 2.5 : 7.5
+    };
+  });
+
+  function resetPieces(){
+    // Rebuild every loose element back inside .plant in its original DOM order.
+    // We do NOT use saved nextSibling references because those become invalid
+    // after several elements have been detached/reparented.
+    for(const p of pieces){
+      if(p.el.parentNode !== plantHome){
+        plantHome.appendChild(p.el);
+      }
+    }
+
+    // Restore the original relative ordering among physics pieces while keeping
+    // the pot elements after them.
+    const potRim = plantHome.querySelector('.pot-rim');
+    for(const p of pieces){
+      plantHome.insertBefore(p.el, potRim);
+    }
+
+    for(const p of pieces){
+      p.detached = false;
+      p.wobble = 0;
+      p.wobbleV = 0;
+      p.x = p.y = p.vx = p.vy = p.rot = p.rotV = 0;
+
+      // Remove every inline property introduced by detached-body physics.
+      p.el.style.position = '';
+      p.el.style.left = '';
+      p.el.style.top = '';
+      p.el.style.width = '';
+      p.el.style.height = '';
+      p.el.style.margin = '';
+      p.el.style.zIndex = '';
+      p.el.style.translate = '';
+      p.el.style.rotate = '';
+      p.el.style.transform = '';
+      p.el.style.transformOrigin = '';
+      p.el.style.pointerEvents = '';
+    }
+
+    debrisLayer.replaceChildren();
+    physicsWarning.classList.remove('show');
+
+    // Always put the whole vase back upright immediately.
+    rig.classList.remove('falling');
+    rig.style.transition = 'none';
+    rig.style.setProperty('--rot', '0deg');
+
+    // Force one layout frame before re-enabling the normal falling transition.
+    void rig.offsetWidth;
+    rig.style.transition = '';
+    setRig(0);
+  }
+
+  function detachPiece(p, leanDir){
+    if(p.detached) return;
+
+    const wr = world.getBoundingClientRect();
+    const r = p.el.getBoundingClientRect();
+
+    // Snapshot its current screen position before reparenting.
+    const left = r.left - wr.left;
+    const top = r.top - wr.top;
+    const w = r.width;
+    const h = r.height;
+
+    debrisLayer.appendChild(p.el);
+
+    p.el.style.position = 'absolute';
+    p.el.style.left = `${left}px`;
+    p.el.style.top = `${top}px`;
+    p.el.style.width = `${w}px`;
+    p.el.style.height = `${h}px`;
+    p.el.style.margin = '0';
+    p.el.style.zIndex = '30';
+    p.el.style.transform = 'none';
+    p.el.style.transformOrigin = '50% 50%';
+    p.el.style.translate = '0px 0px';
+    p.el.style.rotate = '0deg';
+
+    p.detached = true;
+    p.x = 0;
+    p.y = 0;
+
+    // Give the object the lateral velocity of the vase plus a small scatter.
+    p.vx = leanDir * (75 + Math.random()*65) + omega*4;
+    p.vy = -25 - Math.random()*55;
+    p.rotV = leanDir * (120 + Math.random()*160) + (Math.random()-.5)*100;
+  }
+
+  function updatePieces(dt, elapsed){
+    const absAngle = Math.abs(angle);
+    const leanDir = Math.sign(angle) || 1;
+
+    // Wobble starts visibly around 12 degrees.
+    const danger = clamp((absAngle - 12) / 22, 0, 1);
+    const severe = clamp((absAngle - 25) / 15, 0, 1);
+
+    physicsWarning.classList.toggle('show', absAngle > 28 && pieces.some(p => !p.detached));
+
+    for(const p of pieces){
+      if(!p.detached){
+        // Flowers are looser, leaves medium, stems stiffer.
+        const looseness = p.type === 'flower' ? 1.00 : p.type === 'leaf' ? .76 : .38;
+        const phase = elapsed/330 + p.index*1.73;
+
+        // The target "lags" behind the vase, creating inertia.
+        const inertialTarget =
+          (-angle * .34 * looseness) +
+          (-omega * 1.8 * looseness) +
+          Math.sin(phase) * danger * (3.2 + p.index*.15);
+
+        const spring = p.type === 'stem' ? 19 : 13;
+        const damping = p.type === 'stem' ? .79 : .84;
+
+        p.wobbleV += (inertialTarget - p.wobble) * spring * dt;
+        p.wobbleV *= Math.pow(damping, dt*60);
+        p.wobble += p.wobbleV * dt * 12;
+
+        const slideX = -leanDir * severe * looseness * (p.type === 'flower' ? 4.5 : 2.3);
+        const liftY = severe * looseness * (p.type === 'flower' ? -2.5 : -1);
+
+        p.el.style.rotate = `${clamp(p.wobble,-22,22).toFixed(2)}deg`;
+        p.el.style.translate = `${slideX.toFixed(2)}px ${liftY.toFixed(2)}px`;
+
+        // Deterministic-ish detachment thresholds.
+        // Flowers go first, then leaves; stems mostly bend and only detach near failure.
+        const threshold = 31 + p.detachBias + (p.index % 3) * 1.6;
+        if(absAngle > threshold){
+          detachPiece(p, leanDir);
+        }
+      }else{
+        // Independent 2D body in world coordinates.
+        const gravity = 520;       // px/s²
+        const air = .992;
+
+        p.vy += gravity * dt;
+        p.vx *= Math.pow(air, dt*60);
+        p.rotV *= Math.pow(.995, dt*60);
+
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.rot += p.rotV * dt;
+
+        p.el.style.translate = `${p.x.toFixed(1)}px ${p.y.toFixed(1)}px`;
+        p.el.style.rotate = `${p.rot.toFixed(1)}deg`;
+      }
+    }
+  }
+
+  function frame(t){
+    if (!running) return;
+    if (!lastTime) lastTime = t;
+    const dt = Math.min(.028,(t-lastTime)/1000);
+    lastTime = t;
+
+    const elapsed = t-startTime;
+    const d = diffFor(elapsed);
+    const input = currentInput();
+
+    const gravity = Math.sin(angle*Math.PI/180) * (17.5*d.k);
+    const controlTorque = input * 27;
+    const wave1 = Math.sin(t/610 + .3) * .23;
+    const wave2 = Math.sin(t/1310 + 1.8) * .14;
+    const disturbance = (wave1 + wave2) * d.k * 3.1;
+    const micro = (Math.random()-.5) * .24 * d.k;
+
+    omega += (gravity + controlTorque + disturbance + micro) * dt;
+    omega *= Math.pow(.989,dt*60);
+    angle += omega * dt * 8.4;
+
+    if (Math.abs(angle)<3) angle *= .999;
+
+    timeEl.textContent = format(elapsed);
+    diffEl.textContent = d.label;
+    diffEl.style.color =
+      d.label==='EASY' ? '#6ce87a' :
+      d.label==='MEDIUM' ? '#ffd44d' :
+      d.label==='HARD' ? '#ff9554' : '#ff4d74';
+
+    setRig(angle);
+    updatePieces(dt, elapsed);
+
+    if (Math.abs(angle) >= 43){
+      endGame(elapsed, Math.sign(angle)||1);
+      return;
+    }
+    raf = requestAnimationFrame(frame);
+  }
+
+  async function start(){
+    running = false;
+    cancelAnimationFrame(raf);
+
+    intro.classList.add('hidden');
+    gameover.classList.add('hidden');
+
+    // Reset synchronously before any permission prompt so the player sees
+    // the vase restored immediately when START/RIPROVA is tapped.
+    angle = 0;
+    omega = 0;
+    manual = 0;
+    resetPieces();
+
+    await ensureCamera();
+    await ensureSensor();
+    neutralGamma = gamma;
+
+    angle = (Math.random()-.5)*1.3;
+    omega = (Math.random()-.5)*.5;
+    manual = 0;
+    running = true;
+    lastTime = 0;
+    startTime = performance.now();
+
+    startBtn.disabled = true;
+    startBtn.textContent = 'IN GIOCO';
+    instruction.textContent = sensorActive
+      ? 'Compensa la caduta: fiori e foglie reagiscono all’inerzia.'
+      : 'Desktop/test: usa ← e →. Fiori e foglie hanno fisica indipendente.';
+
+    setRig(angle);
+    raf = requestAnimationFrame(frame);
+  }
+
+  function endGame(elapsed,dir){
+    running = false;
+    cancelAnimationFrame(raf);
+    best = Math.max(best,elapsed);
+
+    // On final collapse, eject any pieces that have not detached yet.
+    for(const p of pieces){
+      if(!p.detached && p.type !== 'stem'){
+        detachPiece(p, dir);
+      }
+    }
+
+    // Continue debris animation briefly while the vase falls.
+    const debrisStart = performance.now();
+    let debrisLast = debrisStart;
+    function debrisTick(now){
+      // Stop old game-over debris animation as soon as a new round starts.
+      if(running) return;
+      const dt = Math.min(.03,(now-debrisLast)/1000);
+      debrisLast = now;
+      updatePieces(dt, now-startTime);
+      if(now-debrisStart < 900) requestAnimationFrame(debrisTick);
+    }
+    requestAnimationFrame(debrisTick);
+
+    startBtn.disabled = false;
+    startBtn.textContent = 'START GAME';
+    finalScore.textContent = format(elapsed);
+    bestText.textContent = 'Best sessione: ' + format(best);
+
+    rig.classList.add('falling');
+    rig.style.setProperty('--rot', `${dir*78}deg`);
+    game.classList.add('game-shake');
+
+    setTimeout(()=>{
+      game.classList.remove('game-shake');
+      gameover.classList.remove('hidden');
+    },650);
+  }
+
+  function setManual(v){manual=v}
+  function releaseManual(){manual=0}
+
+  leftBtn.addEventListener('pointerdown',()=>setManual(-1));
+  rightBtn.addEventListener('pointerdown',()=>setManual(1));
+  ['pointerup','pointercancel','pointerleave'].forEach(evt=>{
+    leftBtn.addEventListener(evt,releaseManual);
+    rightBtn.addEventListener(evt,releaseManual);
+  });
+
+  window.addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft'){manual=-1;e.preventDefault()}
+    if(e.key==='ArrowRight'){manual=1;e.preventDefault()}
+  });
+  window.addEventListener('keyup',e=>{
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight') manual=0;
+  });
+
+  introStart.addEventListener('click',start);
+  restartBtn.addEventListener('click',start);
+  startBtn.addEventListener('click',start);
+  calibrateBtn.addEventListener('click',recalibrate);
+  cameraFeed.addEventListener('loadedmetadata',fitCameraToViewport);
+  window.addEventListener('resize',fitCameraToViewport,{passive:true});
+  window.addEventListener('orientationchange',fitCameraToViewport,{passive:true});
+
+  resetPieces();
+  setRig(0);
+})();
+</script>
+</body>
+</html>
