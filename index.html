@@ -462,6 +462,7 @@ button{font:inherit}
 
   let angle = 0;
   let omega = 0;
+  let openingDirection = 1;
 
   let gamma = 0;
   let neutralGamma = 0;
@@ -471,8 +472,9 @@ button{font:inherit}
   let manual = 0;
   let best = 0;
   const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
-  const DISPLAY_ROTATION_FACTOR = 0.38;
-  const DISPLAY_ROTATION_LIMIT = 16;
+  const DISPLAY_ROTATION_FACTOR = 0.5;
+  const DISPLAY_ROTATION_LIMIT = 28;
+  const SENSOR_DEAD_ZONE = 8;
 
   function format(ms){
     ms = Math.max(0,ms||0);
@@ -531,7 +533,9 @@ button{font:inherit}
   function currentInput(){
     if (sensorActive){
       const delta = gamma - neutralGamma;
-      return clamp(delta/40,-0.72,0.72);
+      // Ignore small hand tremors; the player must make a deliberate tilt.
+      const adjustedDelta = Math.sign(delta) * Math.max(0, Math.abs(delta) - SENSOR_DEAD_ZONE);
+      return clamp(adjustedDelta/55,-0.5,0.5);
     }
     return manual;
   }
@@ -658,10 +662,10 @@ button{font:inherit}
     const leanDir = Math.sign(angle) || 1;
 
     // Keep the bouquet stable during light tilts; instability builds near failure.
-    const danger = clamp((absAngle - 19) / 20, 0, 1);
-    const severe = clamp((absAngle - 32) / 10, 0, 1);
+    const danger = clamp((absAngle - 30) / 22, 0, 1);
+    const severe = clamp((absAngle - 44) / 10, 0, 1);
 
-    physicsWarning.classList.toggle('show', absAngle > 35 && pieces.some(p => !p.detached));
+    physicsWarning.classList.toggle('show', absAngle > 47 && pieces.some(p => !p.detached));
 
     for(const p of pieces){
       if(!p.detached){
@@ -690,7 +694,7 @@ button{font:inherit}
 
         // Deterministic-ish detachment thresholds.
         // Flowers go first, then leaves; stems mostly bend and only detach near failure.
-        const threshold = 37 + p.detachBias + (p.index % 3) * 1.2;
+        const threshold = 49 + p.detachBias + (p.index % 3) * 1.2;
         if(absAngle > threshold){
           detachPiece(p, leanDir);
         }
@@ -724,13 +728,17 @@ button{font:inherit}
     const input = currentInput();
 
     const gravity = Math.sin(angle*Math.PI/180) * (17.5*d.k);
-    const controlTorque = input * 27;
+    const controlTorque = input * 16;
+    // Every round begins with a short, clear drift so play starts immediately.
+    const openingTorque = elapsed < 1800
+      ? openingDirection * (9 * (1 - elapsed/1800))
+      : 0;
     const wave1 = Math.sin(t/610 + .3) * .23;
     const wave2 = Math.sin(t/1310 + 1.8) * .14;
     const disturbance = (wave1 + wave2) * d.k * 3.1;
     const micro = (Math.random()-.5) * .24 * d.k;
 
-    omega += (gravity + controlTorque + disturbance + micro) * dt;
+    omega += (gravity + controlTorque + openingTorque + disturbance + micro) * dt;
     omega *= Math.pow(.989,dt*60);
     angle += omega * dt * 8.4;
 
@@ -746,7 +754,7 @@ button{font:inherit}
     setRig(angle);
     updatePieces(dt, elapsed);
 
-    if (Math.abs(angle) >= 43){
+    if (Math.abs(angle) >= 57){
       endGame(elapsed, Math.sign(angle)||1);
       return;
     }
@@ -770,8 +778,9 @@ button{font:inherit}
     await ensureSensor();
     neutralGamma = gamma;
 
-    angle = (Math.random()-.5)*1.3;
-    omega = (Math.random()-.5)*.5;
+    openingDirection = Math.random() < .5 ? -1 : 1;
+    angle = openingDirection * (2 + Math.random()*1.5);
+    omega = openingDirection * (1.1 + Math.random()*.5);
     manual = 0;
     running = true;
     lastTime = 0;
