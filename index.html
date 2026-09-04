@@ -37,33 +37,6 @@ button{font:inherit}
     radial-gradient(circle at 48% 49%, rgba(255,53,194,.20), transparent 34%),
     linear-gradient(135deg,#10001c 0%,#32105f 43%,#08166e 100%);
 }
-#cameraViewport{
-  position:fixed;
-  inset:0;
-  z-index:0;
-  overflow:hidden;
-  background:#05020d;
-}
-#cameraFeed{
-  position:absolute;
-  top:50%;
-  left:50%;
-  display:block;
-  max-width:none;
-  max-height:none;
-  transform:translate(-50%,-50%);
-}
-.camera-scrim{
-  position:absolute;
-  inset:0;
-  z-index:2;
-  display:none;
-  pointer-events:none;
-  background:
-    radial-gradient(circle at 53% 45%, rgba(126,44,255,.24), transparent 28%),
-    linear-gradient(135deg, rgba(16,0,28,.36), rgba(8,22,110,.24));
-}
-#game.camera-active .camera-scrim{display:block}
 #game::before{
   content:"";
   position:absolute;inset:-15%;
@@ -355,10 +328,6 @@ button{font:inherit}
 </head>
 <body>
 <div id="game">
-  <div id="cameraViewport" aria-hidden="true">
-    <video id="cameraFeed" autoplay muted playsinline></video>
-  </div>
-  <div class="camera-scrim" aria-hidden="true"></div>
   <div class="particles" aria-hidden="true">
     <i style="left:8%;top:85%;animation-delay:-1.1s"></i>
     <i style="left:17%;top:62%;animation-delay:-3.4s"></i>
@@ -486,9 +455,6 @@ button{font:inherit}
   const calibrateBtn = document.getElementById('calibrateBtn');
   const leftBtn = document.getElementById('leftBtn');
   const rightBtn = document.getElementById('rightBtn');
-  const cameraFeed = document.getElementById('cameraFeed');
-  const cameraViewport = document.getElementById('cameraViewport');
-
   let running = false;
   let raf = 0;
   let startTime = 0;
@@ -504,9 +470,9 @@ button{font:inherit}
 
   let manual = 0;
   let best = 0;
-  let cameraStarted = false;
-
   const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
+  const DISPLAY_ROTATION_FACTOR = 0.38;
+  const DISPLAY_ROTATION_LIMIT = 16;
 
   function format(ms){
     ms = Math.max(0,ms||0);
@@ -524,7 +490,8 @@ button{font:inherit}
   }
 
   function setRig(a){
-    rig.style.setProperty('--rot', `${a.toFixed(2)}deg`);
+    const displayAngle = clamp(a * DISPLAY_ROTATION_FACTOR, -DISPLAY_ROTATION_LIMIT, DISPLAY_ROTATION_LIMIT);
+    rig.style.setProperty('--rot', `${displayAngle.toFixed(2)}deg`);
     needle.style.left = `${50 + clamp(a/42,-1,1)*48}%`;
   }
 
@@ -551,38 +518,6 @@ button{font:inherit}
     return false;
   }
 
-  async function ensureCamera(){
-    if (cameraStarted || !window.matchMedia('(max-width: 699px)').matches) return;
-    if (!navigator.mediaDevices?.getUserMedia) return;
-
-    try{
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio:false,
-        video:{facingMode:{ideal:'user'}}
-      });
-      cameraFeed.srcObject = stream;
-      await cameraFeed.play();
-      fitCameraToViewport();
-      cameraStarted = true;
-      game.classList.add('camera-active');
-    }catch(e){}
-  }
-
-  function fitCameraToViewport(){
-    const sourceWidth = cameraFeed.videoWidth;
-    const sourceHeight = cameraFeed.videoHeight;
-    if (!sourceWidth || !sourceHeight) return;
-
-    const viewportWidth = cameraViewport.clientWidth;
-    const viewportHeight = cameraViewport.clientHeight;
-    const scale = Math.max(viewportWidth/sourceWidth, viewportHeight/sourceHeight);
-
-    // Size the actual frame beyond the viewport, then crop its excess edges.
-    // This does not stretch the camera image.
-    cameraFeed.style.width = `${Math.ceil(sourceWidth*scale)}px`;
-    cameraFeed.style.height = `${Math.ceil(sourceHeight*scale)}px`;
-  }
-
   function recalibrate(){
     neutralGamma = gamma;
     angle = 0;
@@ -596,7 +531,7 @@ button{font:inherit}
   function currentInput(){
     if (sensorActive){
       const delta = gamma - neutralGamma;
-      return clamp(delta/32,-1,1);
+      return clamp(delta/40,-0.72,0.72);
     }
     return manual;
   }
@@ -832,7 +767,6 @@ button{font:inherit}
     manual = 0;
     resetPieces();
 
-    await ensureCamera();
     await ensureSensor();
     neutralGamma = gamma;
 
@@ -915,10 +849,6 @@ button{font:inherit}
   restartBtn.addEventListener('click',start);
   startBtn.addEventListener('click',start);
   calibrateBtn.addEventListener('click',recalibrate);
-  cameraFeed.addEventListener('loadedmetadata',fitCameraToViewport);
-  window.addEventListener('resize',fitCameraToViewport,{passive:true});
-  window.addEventListener('orientationchange',fitCameraToViewport,{passive:true});
-
   resetPieces();
   setRig(0);
 })();
