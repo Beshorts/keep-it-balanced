@@ -657,11 +657,11 @@ button{font:inherit}
     const absAngle = Math.abs(angle);
     const leanDir = Math.sign(angle) || 1;
 
-    // Wobble starts visibly around 12 degrees.
-    const danger = clamp((absAngle - 12) / 22, 0, 1);
-    const severe = clamp((absAngle - 25) / 15, 0, 1);
+    // Keep the bouquet stable during light tilts; instability builds near failure.
+    const danger = clamp((absAngle - 19) / 20, 0, 1);
+    const severe = clamp((absAngle - 32) / 10, 0, 1);
 
-    physicsWarning.classList.toggle('show', absAngle > 28 && pieces.some(p => !p.detached));
+    physicsWarning.classList.toggle('show', absAngle > 35 && pieces.some(p => !p.detached));
 
     for(const p of pieces){
       if(!p.detached){
@@ -690,7 +690,7 @@ button{font:inherit}
 
         // Deterministic-ish detachment thresholds.
         // Flowers go first, then leaves; stems mostly bend and only detach near failure.
-        const threshold = 31 + p.detachBias + (p.index % 3) * 1.6;
+        const threshold = 37 + p.detachBias + (p.index % 3) * 1.2;
         if(absAngle > threshold){
           detachPiece(p, leanDir);
         }
