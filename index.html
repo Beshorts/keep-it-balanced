@@ -680,10 +680,10 @@ button{font:inherit}
     const leanDir = Math.sign(angle) || 1;
 
     // Keep the bouquet stable during light tilts; instability builds near failure.
-    const danger = clamp((absAngle - 30) / 22, 0, 1);
-    const severe = clamp((absAngle - 44) / 10, 0, 1);
+    const danger = clamp((absAngle - 33) / 22, 0, 1);
+    const severe = clamp((absAngle - 48) / 10, 0, 1);
 
-    physicsWarning.classList.toggle('show', absAngle > 47 && pieces.some(p => !p.detached));
+    physicsWarning.classList.toggle('show', absAngle > 51 && pieces.some(p => !p.detached));
 
     for(const p of pieces){
       if(!p.detached){
@@ -712,7 +712,7 @@ button{font:inherit}
 
         // Deterministic-ish detachment thresholds.
         // Flowers go first, then leaves; stems mostly bend and only detach near failure.
-        const threshold = 49 + p.detachBias + (p.index % 3) * 1.2;
+        const threshold = 53 + p.detachBias + (p.index % 3) * 1.2;
         if(absAngle > threshold){
           detachPiece(p, leanDir);
         }
@@ -773,7 +773,7 @@ button{font:inherit}
     setRig(angle);
     updatePieces(dt, elapsed);
 
-    if (Math.abs(angle) >= 57){
+    if (Math.abs(angle) >= 61){
       endGame(elapsed, Math.sign(angle)||1);
       return;
     }
